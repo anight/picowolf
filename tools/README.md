@@ -33,6 +33,15 @@ levels would be 1.4 MB against 148 KB.
 `CA_RLEWexpand` and `VW_DePlaneVGA` transcribed into Python, with the chunk
 numbering read out of `gfxv_wl6.h` rather than repeated.
 
+To build the desktop game against them:
+
+```bash
+make -C Wolf4SDL FLASH_ASSETS=$PWD/generated
+```
+
+That binary needs no data files at all - it will run in an empty directory -
+and its framebuffer is byte-identical to the file-reading build's.
+
 `verify.py` checks the result two ways.  It rebuilds every blob and compares it
 with what is on disk, which catches anything truncated or corrupted; and it
 runs the desktop game under gdb, dumps chunks out of its live `grsegs`,

@@ -111,25 +111,113 @@ def build(data, outdir):
     tables["maps"] = mapdir
     tables["rlewtag"] = data.rlewtag
 
-    # ---- audio and vswap: as they stand ----
+    #
+    # Audio is not a copy.  CAL_SetupAudioFile() reshapes what it reads, and
+    # audiosegs[] is what the sound manager indexes, so that is what ships:
+    #
+    #   PC speaker sounds   taken as they are
+    #   AdLib sounds        extended by the difference between the AdLibSound
+    #                       struct and its data member, 23 bytes, which reads
+    #                       on into whatever follows the chunk - that is the
+    #                       format, not a mistake to fix here
+    #   digitised sounds    skipped; their bytes live in VSWAP and audiot holds
+    #                       only an unused directory
+    #   music               given a four-byte little-endian length of its own
+    #                       at the front, and, when the original two-byte
+    #                       length is non-zero, its 88 bytes of Muse trailer
+    #                       dropped
+    #
+    ADLIB_EXTRA = 23          # sizeof(AdLibSound) - sizeof(((AdLibSound*)0)->data)
+    MUSE_TRAILER = 88
+
+    start_adlib = data.audio_start["adlib"]
+    start_digi = data.audio_start["digi"]
+    start_music = data.audio_start["music"]
+
+    raw = data.audioraw
+    starts = data.audiostarts
+
     audio = bytearray()
     audiodir = []
-    for chunk in data.audio:
-        audiodir.append((len(audio), len(chunk)))
-        audio += chunk
+
+    for chunk in range(len(starts) - 1):
+        pos = starts[chunk]
+        size = starts[chunk + 1] - pos
+
+        if start_digi <= chunk < start_music:
+            audiodir.append((-1, 0))              # never cached
+            continue
+
+        if chunk >= start_music:
+            length = int.from_bytes(raw[pos:pos + 2], "little")
+            if length:
+                size += 2 - MUSE_TRAILER
+                src = raw[pos + 2:pos + 2 + size - 4]
+            else:
+                size += 4
+                src = raw[pos:pos + size - 4]
+            body = size.to_bytes(4, "little", signed=True) + src
+        else:
+            if chunk >= start_adlib:
+                size += ADLIB_EXTRA
+            body = raw[pos:pos + size]
+
+        audiodir.append((len(audio), len(body)))
+        audio += body
+
     blobs["audiot"] = bytes(audio)
     tables["audio"] = audiodir
 
+    #
+    # The page layout is PM_Startup()'s, replicated rather than invented,
+    # because the game measures a page as the gap to the next one:
+    #
+    #   PM_GetPageSize(p) == PMPages[p + 1] - PMPages[p]
+    #
+    # so anything that changes the spacing changes every sprite's size and the
+    # sound info page's length.  Three things do:
+    #
+    #   - sprite pages and the sound info page are padded to a 2-byte boundary,
+    #   - a sparse page (offset 0) holds no data and takes none, which makes it
+    #     zero length and points it at whatever follows,
+    #   - a page whose successor is sparse is measured by the length table
+    #     rather than by the offset gap, because there is no next offset.
+    #
     v = data.vswap
+    raw = v["raw"]
+    chunks = v["chunks"]
+    offsets, lengths = v["offsets"], v["lengths"]
+
     pages = bytearray()
-    pagedir = []
-    for n in range(v["chunks"]):
-        off, length = v["offsets"][n], v["lengths"][n]
-        pagedir.append((len(pages), length) if length else (-1, 0))
-        if length:
-            pages += v["raw"][off:off + length]
+    pageoffsets = []
+    soundinfopadded = False
+
+    for i in range(chunks):
+        if (v["spritestart"] <= i < v["soundstart"]) or i == chunks - 1:
+            if len(pages) & 1:
+                pages.append(0)
+                if i == chunks - 1:
+                    soundinfopadded = True
+
+        pageoffsets.append(len(pages))
+
+        if not offsets[i]:
+            continue                     # sparse
+
+        if i + 1 < chunks and not offsets[i + 1]:
+            size = lengths[i]
+        elif i + 1 < chunks:
+            size = offsets[i + 1] - offsets[i]
+        else:
+            size = lengths[i]
+
+        pages += raw[offsets[i]:offsets[i] + size]
+
+    pageoffsets.append(len(pages))       # one past the last page
+
     blobs["vswap"] = bytes(pages)
-    tables["pages"] = pagedir
+    tables["pages"] = pageoffsets
+    tables["soundinfopadded"] = soundinfopadded
     tables["vswap"] = v
 
     tables["pictable"] = data.pictable
@@ -166,7 +254,7 @@ def emit(blobs, tables, outdir):
             "wolf_%s_end:" % name,
             "",
         ]
-    (outdir / "wolf_assets.S").write_text("\n".join(lines))
+    (outdir / "wolf_blobs.S").write_text("\n".join(lines))
 
     # -- the tables the game indexes --
     gr = tables["gr"]
@@ -175,6 +263,7 @@ def emit(blobs, tables, outdir):
     audio = tables["audio"]
     pages = tables["pages"]
     v = tables["vswap"]
+    numpages = len(pages) - 1
 
     h = ["/* DO NOT EDIT.  Generated by tools/assets/convert.py. */", "",
          "#ifndef __WOLF_ASSETS_H_", "#define __WOLF_ASSETS_H_", "",
@@ -196,7 +285,8 @@ def emit(blobs, tables, outdir):
           "#define WOLF_NUMPICS     %d" % len(pics),
           "#define WOLF_NUMLEVELS   %d" % len(maps),
           "#define WOLF_NUMAUDIO    %d" % len(audio),
-          "#define WOLF_NUMPAGES    %d" % len(pages),
+          "#define WOLF_NUMPAGES    %d" % numpages,
+          "#define WOLF_SOUNDINFOPAGEPADDED %d" % (1 if tables["soundinfopadded"] else 0),
           "#define WOLF_SPRITESTART %d" % v["spritestart"],
           "#define WOLF_SOUNDSTART  %d" % v["soundstart"],
           "#define WOLF_RLEWTAG     0x%04x" % tables["rlewtag"],
@@ -205,7 +295,9 @@ def emit(blobs, tables, outdir):
           "extern const wolfpic_t   wolf_pictable[WOLF_NUMPICS];",
           "extern const wolflevel_t wolf_levels[WOLF_NUMLEVELS];",
           "extern const wolfspan_t  wolf_audiospans[WOLF_NUMAUDIO];",
-          "extern const wolfspan_t  wolf_pagespans[WOLF_NUMPAGES];",
+          "/* One offset per page plus one past the last, so that a page's size is",
+          " * the gap to the next - which is how PM_GetPageSize() measures it. */",
+          "extern const int32_t     wolf_pageoffsets[WOLF_NUMPAGES + 1];",
           "", "#endif", ""]
     (outdir / "wolf_assets.h").write_text("\n".join(h))
 
@@ -220,7 +312,10 @@ def emit(blobs, tables, outdir):
          '#include "wolf_assets.h"', ""]
     c += spans("wolf_grspans", gr)
     c += spans("wolf_audiospans", audio)
-    c += spans("wolf_pagespans", pages)
+    c += ["const int32_t wolf_pageoffsets[] = {"]
+    for n in range(0, len(pages), 8):
+        c.append("    " + " ".join("%8d," % o for o in pages[n:n + 8]))
+    c += ["};", ""]
     c += ["const wolfpic_t wolf_pictable[] = {"]
     for w, hh in pics:
         c.append("    { %4d, %4d }," % (w, hh))
@@ -238,7 +333,7 @@ def report(blobs, tables, data, outdir, firmware):
     src = {
         "vgagraph": ("vgagraph + vgahead + vgadict", "decoded and deplaned"),
         "gamemaps": ("gamemaps + maphead", "kept compressed"),
-        "audiot":   ("audiot + audiohed", "copied"),
+        "audiot":   ("audiot + audiohed", "reshaped as audiosegs"),
         "vswap":    ("vswap", "copied"),
     }
     origin = {
@@ -252,7 +347,8 @@ def report(blobs, tables, data, outdir, firmware):
     }
 
     tabledir = outdir / "wolf_assets.c"
-    tablesize = sum(len(t) * 8 for t in (tables["gr"], tables["audio"], tables["pages"])) \
+    tablesize = sum(len(t) * 8 for t in (tables["gr"], tables["audio"])) \
+        + len(tables["pages"]) * 4 \
         + len(tables["pictable"]) * 4 + len(tables["maps"]) * 32
 
     lines = ["Converted resources", "==================="]
@@ -280,7 +376,7 @@ def report(blobs, tables, data, outdir, firmware):
     lines.append("")
     lines.append("SRAM this removes")
     lines.append("-----------------")
-    pm = data.vswap["pagesize"]
+    pm = len(blobs["vswap"])
     gr = len(blobs["vgagraph"])
     au = len(blobs["audiot"])
     lines.append("PM_Startup page file      %9d   now read in place" % pm)

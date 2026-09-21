@@ -57,6 +57,27 @@ def main():
     wanted = []
     dumps = []
 
+    # A PC speaker sound, an AdLib sound and two music chunks: audiosegs[] is
+    # not a copy of audiot, it is what CAL_SetupAudioFile() reshapes it into,
+    # and each of those three classes is reshaped differently.
+    audiospans = (generated / "wolf_assets.c").read_text()
+    audiospans = audiospans.split("const wolfspan_t wolf_audiospans[] = {")[1].split("};")[0]
+    audiospans = [(int(a), int(b)) for a, b in
+                  re.findall(r"\{\s*(-?\d+),\s*(\d+)\s*\}", audiospans)]
+    nsounds = (len(audiospans) - 27) // 3
+    audiowanted = []
+    for label, chunk in (("audio pc", 0),
+                         ("audio pc last", nsounds - 1),
+                         ("audio adlib", nsounds + 3),
+                         ("audio music", 3 * nsounds),
+                         ("audio music last", len(audiospans) - 1)):
+        off, length = audiospans[chunk]
+        if off < 0 or not length:
+            continue
+        audiowanted.append((label, chunk, off, length))
+        dumps.append("dump binary memory %s/audio_%d.bin audiosegs[%d] audiosegs[%d]+%d"
+                     % (work, chunk, chunk, chunk, length))
+
     for name in SAMPLE:
         if name not in gfx:
             continue
@@ -80,22 +101,26 @@ def main():
         "dump binary memory %s/map_p0.bin mapsegs[0] mapsegs[0]+8192" % work,
         "dump binary memory %s/map_p1.bin mapsegs[1] mapsegs[1]+8192" % work,
         "dump binary memory %s/map_p2.bin mapsegs[2] mapsegs[2]+8192" % work,
-        # A wall, a sprite and a digitised sound, to check the page table the
-        # renderer and the mixer index rather than just the bytes in it.
-        "dump binary memory %s/page_wall.bin PMPages[0] PMPages[0]+4096" % work,
-        "dump binary memory %s/page_sprite.bin PMPages[PMSpriteStart] PMPages[PMSpriteStart]+64" % work,
-        "dump binary memory %s/page_sound.bin PMPages[PMSoundStart] PMPages[PMSoundStart]+4096" % work,
+        # The whole page file and the whole pointer table.  Sampling three
+        # pages was not enough: the game measures a page as the gap to the
+        # next one, so a layout that differs only in padding gives every
+        # sprite the wrong size while any single page still compares equal.
+        "dump binary memory %s/pagedata.bin PMPages[0] PMPages[ChunksInFile]" % work,
+        "dump binary memory %s/pagetable.bin PMPages PMPages+ChunksInFile+1" % work,
+        "printf \"PMSOUNDINFOPAGEPADDED %d\\n\", PMSoundInfoPagePadded",
+        "printf \"CHUNKSINFILE %d\\n\", ChunksInFile",
         "quit",
     ])
     (work / "dump.cmd").write_text(script)
 
-    subprocess.run(
+    run = subprocess.run(
         ["timeout", "180", "gdb", "-batch", "-nx", "-x", str(work / "dump.cmd"),
          "--args", "./wolf4sdl", "--windowed", "--nowait", "--joystick", "-1",
          "--tedlevel", "0", "--configdir", str(work)],
-        cwd=GAME, capture_output=True,
+        cwd=GAME, capture_output=True, text=True,
         env={"SDL_VIDEODRIVER": "dummy", "SDL_AUDIODRIVER": "dummy",
              "HOME": str(work), "PATH": "/usr/bin:/bin"})
+    gdbout = run.stdout
 
     gr = (generated / "blobs" / "vgagraph.bin").read_bytes()
     checked = fails = 0
@@ -176,29 +201,72 @@ def main():
             print("  %-16s %7d bytes  DIFFERS" % ("map plane %d" % n, len(mine)))
             fails += 1
 
-    pagespans = (generated / "wolf_assets.c").read_text()
-    pagespans = pagespans.split("const wolfspan_t wolf_pagespans[] = {")[1].split("};")[0]
-    pagespans = [(int(a), int(b)) for a, b in
-                 re.findall(r"\{\s*(-?\d+),\s*(\d+)\s*\}", pagespans)]
+    body = (generated / "wolf_assets.c").read_text()
+    body = body.split("const int32_t wolf_pageoffsets[] = {")[1].split("};")[0]
+    pageoffsets = [int(x) for x in re.findall(r"(-?\d+),", body)]
     pages = (generated / "blobs" / "vswap.bin").read_bytes()
-    v = data.vswap
 
-    for label, index in (("vswap wall", 0),
-                         ("vswap sprite", v["spritestart"]),
-                         ("vswap sound", v["soundstart"])):
-        dump = work / ("page_%s.bin" % label.split()[1])
+    dump = work / "pagedata.bin"
+    if dump.exists():
+        theirs = dump.read_bytes()
+        checked += 1
+        if pages == theirs:
+            print("  %-16s %7d bytes  ok" % ("whole page file", len(theirs)))
+        else:
+            bad = sum(1 for a, b in zip(pages, theirs) if a != b)
+            print("  %-16s %7d bytes  DIFFERS in %d (lengths %d/%d)"
+                  % ("whole page file", len(theirs), bad, len(pages), len(theirs)))
+            fails += 1
+    else:
+        print("  %-16s          no dump" % "whole page file")
+        fails += 1
+
+    dump = work / "pagetable.bin"
+    if dump.exists():
+        raw = dump.read_bytes()
+        width = 8 if len(raw) // (len(pageoffsets)) == 8 else 4
+        fmt = "<%d%s" % (len(raw) // width, "Q" if width == 8 else "I")
+        ptrs = struct.unpack(fmt, raw)
+        theirs = [p - ptrs[0] for p in ptrs]
+        checked += 1
+        if theirs == pageoffsets:
+            print("  %-16s %7d pages  ok" % ("page table", len(theirs) - 1))
+        else:
+            bad = sum(1 for a, b in zip(theirs, pageoffsets) if a != b)
+            first = next((n for n, (a, b) in enumerate(zip(theirs, pageoffsets))
+                          if a != b), None)
+            print("  %-16s %7d pages  DIFFERS in %d, first at page %s"
+                  % ("page table", len(theirs) - 1, bad, first))
+            fails += 1
+    else:
+        print("  %-16s          no dump" % "page table")
+        fails += 1
+
+    audioblob = (generated / "blobs" / "audiot.bin").read_bytes()
+    for label, chunk, off, length in audiowanted:
+        dump = work / ("audio_%d.bin" % chunk)
         if not dump.exists():
-            print("  %-16s          no dump" % label)
+            print("  %-16s %7d bytes  no dump" % (label, length))
             fails += 1
             continue
-        theirs = dump.read_bytes()
-        off, length = pagespans[index]
-        mine = pages[off:off + len(theirs)]
+        mine, theirs = audioblob[off:off + length], dump.read_bytes()
         checked += 1
         if mine == theirs:
-            print("  %-16s %7d bytes  ok" % (label, len(theirs)))
+            print("  %-16s %7d bytes  ok" % (label, length))
         else:
-            print("  %-16s %7d bytes  DIFFERS" % (label, len(theirs)))
+            bad = sum(1 for a, b in zip(mine, theirs) if a != b)
+            print("  %-16s %7d bytes  DIFFERS in %d" % (label, length, bad))
+            fails += 1
+
+    m = re.search(r"PMSOUNDINFOPAGEPADDED (\d+)", gdbout)
+    want = "#define WOLF_SOUNDINFOPAGEPADDED 1" in (generated / "wolf_assets.h").read_text()
+    if m:
+        checked += 1
+        if (m.group(1) == "1") == want:
+            print("  %-16s          ok (%s)" % ("sound info pad", m.group(1)))
+        else:
+            print("  %-16s          DIFFERS (game %s, generated %d)"
+                  % ("sound info pad", m.group(1), 1 if want else 0))
             fails += 1
 
     print()

@@ -248,7 +248,27 @@ class DataSet:
         head = self._path("audiohed").read_bytes()
         offs = list(struct.unpack("<%dI" % (len(head) // 4), head))
         data = self._path("audiot").read_bytes()
+
+        self.audiostarts = offs
+        self.audioraw = data
         self.audio = [data[offs[n]:offs[n + 1]] for n in range(len(offs) - 1)]
+
+        #
+        # audiowl6.h lays the file out as three runs of LASTSOUND chunks - PC
+        # speaker, AdLib, a directory for the digitised sounds that live in
+        # VSWAP - followed by the music.  LASTSOUND is whatever makes those
+        # three runs plus the music fill the file.
+        #
+        chunks = len(offs) - 1
+        lastmusic = 27                     # enum musicnames, CORNER_MUS..PACMAN_MUS
+        lastsound = (chunks - lastmusic) // 3
+
+        self.audio_start = {
+            "pc": 0,
+            "adlib": lastsound,
+            "digi": 2 * lastsound,
+            "music": 3 * lastsound,
+        }
 
     # -- vswap --
     def _read_vswap(self):

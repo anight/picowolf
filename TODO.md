@@ -28,7 +28,7 @@ firmware, and the game still reads the `.wl6` files through `CA_Startup()` and
 `PM_Startup()` into 2.1 MB of SRAM.
 
 Two pieces remain, and they go together.  A firmware target that compiles
-Wolf4SDL and links `generated/wolf_assets.S`; and the cache and page managers
+Wolf4SDL and links `generated/wolf_blobs.S`; and the cache and page managers
 rewritten against the span tables - `PM_GetPage()` returning a pointer into
 flash instead of into `PMPageData`, `grsegs[]` becoming
 `wolf_vgagraph + wolf_grspans[chunk].offset`, `audiosegs[]` the same, and
