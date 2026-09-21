@@ -20,24 +20,36 @@ is a decision about how the two projects are developed rather than a cleanup.
 Wolf4SDL has the same shape: a local clone tracking bitbucket, with the port
 commits on top and no fork pushed anywhere.
 
-## The converted resources are not built or used yet
+## There is still no firmware target for the game
 
-`tools/assets/convert.py` produces them and `verify.py` checks them, but
-nothing consumes them: `src/CMakeLists.txt` still builds only the bring-up
-firmware, and the game still reads the `.wl6` files through `CA_Startup()` and
-`PM_Startup()` into 2.1 MB of SRAM.
+`make -C Wolf4SDL FLASH_ASSETS=...` builds a desktop binary that needs no data
+files, and its framebuffer is byte-identical to the file-reading one, so the
+resource path is done and proved.  What has never been compiled is Wolf4SDL for
+the board: `src/CMakeLists.txt` knows only about the bring-up firmware.
 
-Two pieces remain, and they go together.  A firmware target that compiles
-Wolf4SDL and links `generated/wolf_blobs.S`; and the cache and page managers
-rewritten against the span tables - `PM_GetPage()` returning a pointer into
-flash instead of into `PMPageData`, `grsegs[]` becoming
-`wolf_vgagraph + wolf_grspans[chunk].offset`, `audiosegs[]` the same, and
-`CA_CacheMap()` decompressing into one fixed 24,576-byte buffer rather than
-three allocations per level.
+That means a target which compiles the game's sources, links
+`generated/wolf_blobs.S`, and replaces `main(argc, argv)` with an entry point
+that sets the clock, brings up stdio, hands over a fixed argv, and turns a
+fatal error into something visible on a serial console rather than `exit()`.
 
-The report says it fits: 2,305,798 bytes of resources and 496,008 of bring-up
-firmware is 66.8% of the flash, leaving 1.39 MB, and it takes 2,146,429 bytes
-out of a 524,288-byte SRAM that could never have held them.
+The report says it fits: 2,424,563 bytes of resources with the 496,008-byte
+bring-up firmware is 69.7% of the flash, and it takes 2.1 MB out of an SRAM
+that could never have held it.  What the board actually reports is another
+matter - the desktop build still allocates in 28 places, none of them now for
+game data, and none of that has been counted on the target.
+
+## Persistence is the last filesystem use left
+
+strace over a full run of the flash build - startup, signon, a demo, exit -
+shows no access to any of the eight data files.  What remains is `~/.wolf4sdl`,
+`config.wl6` read at startup and written at exit, and ten savegame slots probed
+by `SetupSaveGames()`.
+
+That is PLAN item 8, and it needs a decision before it needs code: either the
+first firmware has no persistence at all, or there is a bounded LittleFS-backed
+store and a versioned, validated format to put in it.  The config magic bump
+was a patch on the symptom; raw structs written straight to storage are what
+caused it.
 
 ## `VW_SetPalette()` writes the CLUT twice
 
