@@ -20,18 +20,34 @@ is a decision about how the two projects are developed rather than a cleanup.
 Wolf4SDL has the same shape: a local clone tracking bitbucket, with the port
 commits on top and no fork pushed anywhere.
 
-## Nothing has been flashed
+## VW_UpdateScreen waits out the whole panel transfer
 
-`build/picowolf.uf2` exists and the numbers fit - 75.2% of the flash, 49.5% of
-the SRAM - but no part of this has run on hardware.  Everything claimed about
-the port is claimed from a desktop build that renders the same pixels, and the
-things a board decides are still open: whether the raycaster holds a frame
-rate, what the mixer costs beside DBOPL, whether the panel and the controller
-behave as PicoSDL says.
+With one framebuffer the game has to wait for the DMA before drawing again,
+and `VW_UpdateScreen()` does that with `PSDL_PresentSync()` immediately after
+presenting.  That is correct and it gives up the overlap the frame rate came
+from: on the board the CPU now sits through the whole transfer doing nothing.
 
-That needs a board and a probe.  `picosdl/picodev.sh flash build/picowolf.elf`
-with an SWD probe, or the `.uf2` over USB with BOOTSEL held - and the serial
-console is most of what there is to read.
+The wait belongs just before the next draw rather than just after the present.
+`VW_UpdateScreen()` is the only point the game reliably passes through between
+the two - menus, the HUD and the 3D view all draw from their own places - so
+moving it means finding a later safe point, or gating every entry to the
+framebuffer on `PSDL_BufferBusy()`.  Worth measuring what it costs before
+deciding how much to spend on it.
+
+## The PicoSDL host build does not model DMA
+
+`tools/host/psdl_host_backend.c` runs the real library on a desktop, and that
+is how the tearing above was pinned down - every pixel and every palette entry
+matched the SDL2 build, which left only the way they reach the panel.  But its
+present is a synchronous copy and `psdl_backend_video_buffer_busy()` always
+answers no, so the class of bug it just helped find is one it cannot itself
+reproduce.
+
+Making the present asynchronous there - a pending transfer with a deadline,
+`buffer_busy` true until it passes - would catch a one-buffer client writing
+over a frame in flight on the host.  It would also model the panel being
+320x240 with the canvas letterboxed, which it currently does not: it assumes
+the canvas is the panel.
 
 ## 22,808 bytes of SRAM are tables that could be in flash
 

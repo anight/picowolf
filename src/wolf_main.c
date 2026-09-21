@@ -45,6 +45,27 @@ int main(void)
     printf("\n=== picowolf ===\n");
     printf("sys clock %u Hz\n", (unsigned)clock_get_hz(clk_sys));
 
+    /*
+     * The letterbox.  The panel is 320x240 and the game is 320x200, so there
+     * are twenty rows above and below that would otherwise be black.  PicoSDL
+     * puts the frame rate and the per-core load in the top one and whatever
+     * text it is given in the bottom one.
+     *
+     * The colours are RGB rather than palette indices, and that is the point:
+     * the bands are PicoSDL's overlay, not part of the game's indexed world.
+     * Wolf fades the palette to black between every screen and flashes entry
+     * 0 red when the player is hit - bands drawn in indices would follow both.
+     *
+     * Set before WolfMain() rather than inside it: PSDL_StatusBands only
+     * records what to paint, the painting happens at present time, and this
+     * is a choice the firmware makes rather than anything the game knows.
+     */
+    static const SDL_Color band_fg = { 255, 255, 255, SDL_ALPHA_OPAQUE };
+    static const SDL_Color band_bg = {   0,   0,   0, SDL_ALPHA_OPAQUE };
+
+    PSDL_StatusBands(SDL_TRUE, band_fg, band_bg);
+    PSDL_SetFooterText("github.com/anight/picowolf");
+
     WolfMain((int)(sizeof(args) / sizeof(args[0])) - 1, args);
 
     /*
