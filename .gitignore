@@ -9,8 +9,8 @@
 # following picopop: picosdl from git@github.com:anight/picosdl.git, and
 # Wolf4SDL from a fork on a picowolf branch once one is pushed.  Until then
 # picosdl is a symlink into the picopop checkout and Wolf4SDL is a local clone
-# of KS-Presto/Wolf4SDL carrying the port commits, so neither belongs in this
-# repository's index.
+# tracking bitbucket.org/ks-presto/wolf4sdl with the port commits on top, so
+# neither belongs in this repository's index.
 #
 /picosdl
 /Wolf4SDL/

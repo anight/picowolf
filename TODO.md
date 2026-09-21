@@ -18,31 +18,30 @@ This is the only thing that has ever run on the board, so it should build
 before anything else is built on top of it.  Pinning PicoSDL as a submodule
 rather than a symlink into the picopop checkout is what stops it recurring.
 
-## `VL_SetPalette()` writes the CLUT twice
+## `VW_SetPalette()` writes the CLUT twice
 
-It sets `screenBuffer`'s palette and then `screen`'s.  On the desktop those are
-two different `SDL_Palette` objects and only the first matters.  On PicoSDL
-there is exactly one palette - `SDL_SetPaletteColors()` opens with
+It sets `screen.buffer`'s palette and then `screen.surface`'s.  On the desktop
+those are two different `SDL_Palette` objects and only the first matters.  On
+PicoSDL there is exactly one palette - `SDL_SetPaletteColors()` opens with
 `(void)palette; /* there is only one */` - so both calls write the same
 hardware CLUT, each one paying a full `dispSetClut()` upload and a
 `psdl_backend_video_sync()` wait on the in-flight panel DMA.
 
-`VW_FadeOut()` is `VL_FadeOut(0,255,0,0,0,30)`, so that is 60 uploads and 60
-syncs across a fade where 30 would do.  The guard is to skip the second write
-when the two surfaces already share a palette.  `VL_SetVGAPlaneMode()` does the
-same thing once at startup.
+A full fade is 30 steps, so that is 60 uploads and 60 syncs where 30 would do.
+The guard is to skip the second write when the two surfaces already share a
+palette.
 
-## `screen` and `screenBuffer` should be one buffer
+## `screen.surface` and `screen.buffer` should be one buffer
 
-The game draws into `screenBuffer` and `VH_UpdateScreen()` blits it to `screen`.
-On PicoSDL `SDL_GetWindowSurface()` wraps the client's own canvas without
-copying, so that blit becomes a 64,000-byte memcpy per frame that achieves
-nothing, and holding both costs 125 KB of an SRAM that already has around
-350 KB of fixed demand.
+The game draws into `screen.buffer` and `VW_UpdateScreen()` blits it to
+`screen.surface`.  On PicoSDL `SDL_GetWindowSurface()` wraps the client's own
+canvas without copying, so that blit becomes a 64,000-byte memcpy per frame
+that achieves nothing, and holding both costs 125 KB of an SRAM that already
+has around 350 KB of fixed demand.
 
 `FizzleFade()` is what stands in the way: it dissolves the new frame into the
 displayed one, so it genuinely wants a source and a destination.  Everything
-else in the video path draws into `screenBuffer` and would not notice the
+else in the video path draws into `screen.buffer` and would not notice the
 collapse.  Whatever replaces it has to keep the dissolve without keeping a
 second full-screen buffer alive for the rest of the frame's life.
 
