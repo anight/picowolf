@@ -17,14 +17,21 @@
 int WolfMain(int argc, char *argv[]);
 
 /*
- * The command line the desktop build would have been given.  --joystick -1
- * because Wolf4SDL opens joystick 0 by default and that is not how the board's
- * controller should be found; when the input rework names its devices this
- * goes with it.
+ * The command line the desktop build would have been given.
+ *
+ * --joystick 0 is the board's controller, and there is only ever one: PicoSDL
+ * reports a single joystick whether the analog stick, the I2C pad or both are
+ * fitted, because both feed the same axes and a client that finds a controller
+ * stops looking for joysticks.
+ *
+ * tools/host/play.sh passes -1 instead, which is a desktop workaround: there,
+ * joystick 0 can be whatever SDL enumerated - on this machine a keyboard's
+ * "System Control" collection, parked off-centre.  Carrying that over to the
+ * board disabled the stick and the pad together.
  */
 static char  arg0[] = "picowolf";
 static char  arg1[] = "--joystick";
-static char  arg2[] = "-1";
+static char  arg2[] = "0";
 static char *args[] = { arg0, arg1, arg2, NULL };
 
 int main(void)
