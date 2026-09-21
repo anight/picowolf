@@ -33,16 +33,34 @@ That needs a board and a probe.  `picosdl/picodev.sh flash build/picowolf.elf`
 with an SWD probe, or the `.uf2` over USB with BOOTSEL held - and the serial
 console is most of what there is to read.
 
-## The firmware still allocates
+## 22,808 bytes of SRAM are tables that could be in flash
 
-`PICO_HEAP_SIZE` is 4096 and the game never asks for game data any more, but
-there are still 28 `SafeMalloc` sites in the sources and none of them has been
-counted on the target.  The ones that remain are the transient ones PLAN item 9
-lists - lookup tables, deplaning scratch, text layout, the demo buffer - and
-each needs to become static, stack-bounded or gone.
+Five arrays are computed once at startup and only read afterwards, so each is a
+constant the build could work out instead of the board:
 
-Until that is done the heap is a guess: it links, which only means the calls
-are reachable, not that 4 KB is enough for them.
+| table | bytes | computed from |
+|---|---|---|
+| `DBOPL::WaveTable` | 8,192 | `sin` and `pow`, in `InitTables()` |
+| `redshifts` | 6,144 | `gamepal`, in `InitRedShifts()` |
+| `finetangent` | 3,600 | `tan`, in `BuildTables()` |
+| `whiteshifts` | 3,072 | `gamepal`, in `InitRedShifts()` |
+| `sintable` | 1,800 | `sin`, in `BuildTables()` |
+
+`gamepal` is already a const include in flash, so the two shift tables are a
+pure function of data the build has.  The other three are arithmetic.  Moving
+all five takes SRAM from 53.3% of a Pico 2 W to 49.0%.
+
+picopop has done this for `DBOPL::WaveTable` already - `tools/assets/dbopl_tables.c`
+generates it and `PICOPOP_DBOPL_CONST_TABLES` switches `dbopl.cpp` over - so
+that one is a port rather than a design.  Each needs a test that checks the
+generated table against the expression it replaces, and the test needs checking
+that it fails when the table is wrong; a table nobody verified is worse than a
+table computed at boot.
+
+Nothing else in the top of the SRAM list can move.  The framebuffer, the map
+planes and their scratch, the demo buffer, `actorat`, `objlist`, `tilemap`,
+`spotvis`, `statobjlist` and `vislist` are all written while the game runs, and
+the rest belongs to PicoSDL and the Bluetooth stack.
 
 ## Persistence is the last filesystem use left
 
