@@ -34,6 +34,13 @@ endif()
 # when configuring a different supported board.
 set(PICO_BOARD pico2_w CACHE STRING "Board type")
 
+#
+# The PicoSDL revision this was last built and flashed against.  picosdl_version.cmake
+# checks it on every build and explains itself if it has moved; bump this once
+# the build is happy with a newer one.
+#
+set(PICOSDL_EXPECTED_COMMIT "cc5894d5d2d92c44f3c8afb6dafa40427d3aa3f0")
+
 # PicoSDL owns the Pico SDK bootstrap so every game using it finds the same SDK.
 include(${PICOSDL_DIR}/cmake/pico_sdk_bootstrap.cmake)
 
@@ -52,6 +59,14 @@ add_executable(picowolf-bringup
 target_link_libraries(picowolf-bringup PRIVATE picosdl)
 target_compile_definitions(picowolf-bringup PRIVATE PICO_HEAP_SIZE=4096)
 set_source_files_properties(main.c PROPERTIES COMPILE_OPTIONS "-Wall;-Wextra")
+
+add_custom_target(picosdl-version ALL
+    COMMAND ${CMAKE_COMMAND}
+        -DPICOSDL_DIR=${PICOSDL_DIR}
+        -DEXPECTED=${PICOSDL_EXPECTED_COMMIT}
+        -P ${CMAKE_CURRENT_LIST_DIR}/picosdl_version.cmake
+    COMMENT "Checking the PicoSDL revision"
+    VERBATIM)
 
 pico_enable_stdio_uart(picowolf-bringup 1)
 pico_enable_stdio_usb(picowolf-bringup 1)

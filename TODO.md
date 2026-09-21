@@ -4,19 +4,21 @@ Things this port owes, roughly in the order they get in the way.  The port
 assessment and the order of the larger work are in [PLAN.md](PLAN.md); this is
 the running list of what has been found since.
 
-## The bring-up target no longer builds
+## picosdl is a symlink, not a submodule
 
-`src/main.c` was written against PicoSDL before it changed, and
-`cmake --build build --target picowolf-bringup` fails on two calls:
+The bring-up target is building again, and `src/picosdl_version.cmake` now
+warns on every build when PicoSDL is not the revision recorded in
+`src/CMakeLists.txt`, naming the commits that moved.  That is enough to stop
+the same five days of silent breakage happening twice, but it is not the thing
+PLAN asks for.
 
-- `SDL_CreateWindow()` is gone as of PicoSDL `48725b4`, "The client owns every
-  framebuffer".  The replacement is `PSDL_CreateWindow(pixels, w, h, pitch)`,
-  and the 320x200 canvas has to be declared by the program.
-- `PSDL_StatusBands()` takes `SDL_Color` since `3c52a52`, not palette indices.
-
-This is the only thing that has ever run on the board, so it should build
-before anything else is built on top of it.  Pinning PicoSDL as a submodule
-rather than a symlink into the picopop checkout is what stops it recurring.
+`picosdl` is a symlink into the picopop checkout, which is convenient while
+both are being worked on - an edit is immediately live in both projects - and
+means picowolf records no revision of its own and cannot be cloned and built
+by anyone else.  Making it a proper submodule splits that shared tree, so it
+is a decision about how the two projects are developed rather than a cleanup.
+Wolf4SDL has the same shape: a local clone tracking bitbucket, with the port
+commits on top and no fork pushed anywhere.
 
 ## `VW_SetPalette()` writes the CLUT twice
 

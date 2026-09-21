@@ -22,6 +22,14 @@ enum {
     PAL_WHITE = 3,
 };
 
+/*
+ * PicoSDL allocates no pixels, so the canvas is ours: 320x200 at one byte an
+ * index, which is what the game will hand it too.  Static rather than on the
+ * stack because the DMA chain reads from it after SDL_UpdateWindowSurface()
+ * returns, and because a 62.5 KB frame is not a stack-sized object.
+ */
+static Uint8 canvas[CANVAS_W * CANVAS_H];
+
 static void set_palette(void)
 {
     SDL_Color palette[256] = {0};
@@ -64,16 +72,31 @@ int main(void)
         for (;;) tight_loop_contents();
     }
 
-    SDL_Window *window = SDL_CreateWindow("picowolf", SDL_WINDOWPOS_UNDEFINED,
-        SDL_WINDOWPOS_UNDEFINED, CANVAS_W, CANVAS_H, SDL_WINDOW_FULLSCREEN);
+    SDL_Window *window = PSDL_CreateWindow(canvas, CANVAS_W, CANVAS_H, CANVAS_W);
     if (window == NULL) {
-        printf("SDL_CreateWindow failed: %s\n", SDL_GetError());
+        printf("PSDL_CreateWindow failed: %s\n", SDL_GetError());
         for (;;) tight_loop_contents();
     }
 
     SDL_Surface *surface = SDL_GetWindowSurface(window);
+    if (surface == NULL) {
+        printf("SDL_GetWindowSurface failed: %s\n", SDL_GetError());
+        for (;;) tight_loop_contents();
+    }
+
     set_palette();
-    PSDL_StatusBands(SDL_TRUE, PAL_WHITE, PAL_BLACK);
+
+    /*
+     * The bands take RGB, not palette indices.  They are PicoSDL's overlay
+     * rather than part of our indexed world, so they keep the colours asked
+     * for whatever we do to the palette afterwards - which matters here,
+     * because draw_frame() repaints the canvas every frame and a fade would
+     * otherwise take the letterbox with it.
+     */
+    SDL_Color band_fg = { .r = 0xe0, .g = 0xe0, .b = 0xe0, .a = SDL_ALPHA_OPAQUE };
+    SDL_Color band_bg = { .r = 0x00, .g = 0x00, .b = 0x00, .a = SDL_ALPHA_OPAQUE };
+
+    PSDL_StatusBands(SDL_TRUE, band_fg, band_bg);
     PSDL_SetFooterText("picowolf: PicoSDL bring-up; Esc stops");
 
     for (unsigned frame = 0;; ++frame) {
