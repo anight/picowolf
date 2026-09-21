@@ -8,6 +8,26 @@ instrument is a serial console.
 host/       helpers for running and inspecting the desktop Wolf4SDL build
 ```
 
+## host/play.sh
+
+Builds the desktop game if needed and runs it from `../Wolf4SDL`, where its
+data, config and savegames live.  It checks the eight `.wl6` files are present
+and names the missing ones rather than failing inside the cache manager.
+
+```bash
+tools/host/play.sh                 # fullscreen
+tools/host/play.sh --windowed      # a 320x200 window
+tools/host/play.sh --tedlevel 0    # straight into E1M1
+DUMP=/tmp/frames tools/host/play.sh --windowed
+```
+
+The port is fixed at 320x200, so on a large display a window is very small and
+fullscreen is the comfortable way to look at it - the X server scales the mode
+up and the game still presents exactly 320x200 indexed pixels.
+
+Default controls: arrows move, `Ctrl` fire, `Alt` strafe, `Shift` run, `Space`
+open, `1`-`4` weapons, `Esc` menu.
+
 Still to come: the asset converter and its tests.  Generated resources belong
 in `../generated/` and are ignored because they derive from user-supplied
 original game files.
