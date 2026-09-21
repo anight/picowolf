@@ -5,8 +5,41 @@ should be proved there before it is built for the board, where the only
 instrument is a serial console.
 
 ```
+assets/     the converter that turns the .wl6 files into flash resources
 host/       helpers for running and inspecting the desktop Wolf4SDL build
 ```
+
+Generated resources belong in `../generated/` and are ignored, because they
+derive from user-supplied original game files.
+
+## assets/
+
+```bash
+tools/assets/convert.py --data Wolf4SDL --gfxheader Wolf4SDL/gfxv_wl6.h \
+                        --out generated --firmware 496008
+tools/assets/verify.py
+```
+
+`convert.py` reads one Wolfenstein 3D v1.4 GoodTimes data set and writes
+`generated/`: four `.bin` blobs, an assembler stub that `.incbin`s them into
+`.rodata`, the small tables the game indexes as generated C, and a size report.
+
+What it decides and why is in its module docstring; the short version is that
+graphics are decoded and deplaned into flash because flash is what this project
+has spare, and maps stay Carmack+RLEW compressed because decoding all sixty
+levels would be 1.4 MB against 148 KB.
+
+`wl6.py` is the reader underneath: `CAL_HuffExpand`, `CAL_CarmackExpand`,
+`CA_RLEWexpand` and `VW_DePlaneVGA` transcribed into Python, with the chunk
+numbering read out of `gfxv_wl6.h` rather than repeated.
+
+`verify.py` checks the result two ways.  It rebuilds every blob and compares it
+with what is on disk, which catches anything truncated or corrupted; and it
+runs the desktop game under gdb, dumps chunks out of its live `grsegs`,
+`mapsegs` and `PMPages`, and compares those against the generated blobs and
+span tables - which is the only way to know that four reimplemented decoders
+agree with the originals.  Corrupting a blob, a span offset, or a decoder each
+make it fail, and all three were checked.
 
 ## host/play.sh
 

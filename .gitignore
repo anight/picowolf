@@ -26,3 +26,4 @@
 /Wolf4SDL/*.sd3
 /Wolf4SDL/*.sod
 /tools/host/resample_check
+__pycache__/
