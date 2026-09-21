@@ -32,7 +32,23 @@ int WolfMain(int argc, char *argv[]);
 static char  arg0[] = "picowolf";
 static char  arg1[] = "--joystick";
 static char  arg2[] = "0";
-static char *args[] = { arg0, arg1, arg2, NULL };
+/*
+ * 22050 Hz, as picopop runs at.
+ *
+ * It halves the mixer's work for nothing audible.  DBOPL costs 938
+ * instructions per output sample, so the music alone is 16.5% of a 125 MHz
+ * core at 44100 and 8.3% at 22050, on the core the mixer has to itself - and
+ * the digitised voices resample alongside it.  What is being reproduced is an
+ * OPL and 7042 Hz samples, so there is nothing above 11 kHz for the higher
+ * rate to carry.
+ *
+ * Not for clock accuracy: the I2S divider is 11.6 ppm off at 125 MHz either
+ * way.  picosdl's backend/pico/board.h quotes its table at 22050 because that
+ * is the rate it expects, not because 44100 is worse.
+ */
+static char  arg3[] = "--samplerate";
+static char  arg4[] = "22050";
+static char *args[] = { arg0, arg1, arg2, arg3, arg4, NULL };
 
 int main(void)
 {
