@@ -20,23 +20,29 @@ is a decision about how the two projects are developed rather than a cleanup.
 Wolf4SDL has the same shape: a local clone tracking bitbucket, with the port
 commits on top and no fork pushed anywhere.
 
-## There is still no firmware target for the game
+## Nothing has been flashed
 
-`make -C Wolf4SDL FLASH_ASSETS=...` builds a desktop binary that needs no data
-files, and its framebuffer is byte-identical to the file-reading one, so the
-resource path is done and proved.  What has never been compiled is Wolf4SDL for
-the board: `src/CMakeLists.txt` knows only about the bring-up firmware.
+`build/picowolf.uf2` exists and the numbers fit - 75.2% of the flash, 49.5% of
+the SRAM - but no part of this has run on hardware.  Everything claimed about
+the port is claimed from a desktop build that renders the same pixels, and the
+things a board decides are still open: whether the raycaster holds a frame
+rate, what the mixer costs beside DBOPL, whether the panel and the controller
+behave as PicoSDL says.
 
-That means a target which compiles the game's sources, links
-`generated/wolf_blobs.S`, and replaces `main(argc, argv)` with an entry point
-that sets the clock, brings up stdio, hands over a fixed argv, and turns a
-fatal error into something visible on a serial console rather than `exit()`.
+That needs a board and a probe.  `picosdl/picodev.sh flash build/picowolf.elf`
+with an SWD probe, or the `.uf2` over USB with BOOTSEL held - and the serial
+console is most of what there is to read.
 
-The report says it fits: 2,424,563 bytes of resources with the 496,008-byte
-bring-up firmware is 69.7% of the flash, and it takes 2.1 MB out of an SRAM
-that could never have held it.  What the board actually reports is another
-matter - the desktop build still allocates in 28 places, none of them now for
-game data, and none of that has been counted on the target.
+## The firmware still allocates
+
+`PICO_HEAP_SIZE` is 4096 and the game never asks for game data any more, but
+there are still 28 `SafeMalloc` sites in the sources and none of them has been
+counted on the target.  The ones that remain are the transient ones PLAN item 9
+lists - lookup tables, deplaning scratch, text layout, the demo buffer - and
+each needs to become static, stack-bounded or gone.
+
+Until that is done the heap is a guess: it links, which only means the calls
+are reachable, not that 4 KB is enough for them.
 
 ## Persistence is the last filesystem use left
 
@@ -63,20 +69,6 @@ hardware CLUT, each one paying a full `dispSetClut()` upload and a
 A full fade is 30 steps, so that is 60 uploads and 60 syncs where 30 would do.
 The guard is to skip the second write when the two surfaces already share a
 palette.
-
-## `screen.surface` and `screen.buffer` should be one buffer
-
-The game draws into `screen.buffer` and `VW_UpdateScreen()` blits it to
-`screen.surface`.  On PicoSDL `SDL_GetWindowSurface()` wraps the client's own
-canvas without copying, so that blit becomes a 64,000-byte memcpy per frame
-that achieves nothing, and holding both costs 125 KB of an SRAM that already
-has around 350 KB of fixed demand.
-
-`FizzleFade()` is what stands in the way: it dissolves the new frame into the
-displayed one, so it genuinely wants a source and a destination.  Everything
-else in the video path draws into `screen.buffer` and would not notice the
-collapse.  Whatever replaces it has to keep the dissolve without keeping a
-second full-screen buffer alive for the rest of the frame's life.
 
 ## Audio: what is left after SDL_mixer
 
