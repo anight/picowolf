@@ -15,6 +15,13 @@
 #
 #   DUMP=/tmp/frames tools/host/play.sh --windowed
 #
+# The joystick is disabled here, because Wolf4SDL opens joystick 0 by default
+# and SDL enumerates some USB keyboards as joysticks - a Keychron K1's "System
+# Control" collection appears as a one-axis stick parked at -32768.  Wolf then
+# lets that axis overwrite the keyboard's direction on every read, which pins
+# the menu to dir_West so the arrow keys do nothing, and turns the player left
+# for ever in game.  Pass --joystick <n> after this to use a real one.
+#
 set -eu
 
 # Wolf4SDL has no --help and treats an unrecognised option as "just start",
@@ -22,7 +29,7 @@ set -eu
 # who only wanted to know the options.
 case ${1-} in
 -h|--help)
-    sed -n '3,17p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '3,23p' "$0" | sed 's/^# \{0,1\}//'
     exit 0
     ;;
 esac
@@ -59,4 +66,6 @@ if [ -n "${DUMP-}" ]; then
 fi
 
 cd "$game"
-exec ./wolf4sdl "$@"
+# --joystick comes first so a caller's own --joystick wins: Wolf4SDL's option
+# loop keeps the last occurrence.
+exec ./wolf4sdl --joystick -1 "$@"

@@ -28,6 +28,16 @@ up and the game still presents exactly 320x200 indexed pixels.
 Default controls: arrows move, `Ctrl` fire, `Alt` strafe, `Shift` run, `Space`
 open, `1`-`4` weapons, `Esc` menu.
 
+It passes `--joystick -1`.  Wolf4SDL opens joystick 0 by default, and SDL
+enumerates some USB keyboards as joysticks: a Keychron K1's "System Control"
+collection arrives as a one-axis stick parked at -32768.  `ReadAnyControl()`
+then overwrites the direction the keyboard just produced on every read, so the
+menu sees `dir_West` for ever and the arrow keys do nothing, while in game
+`PollJoystickMove()` turns the player left and never lets go.  This is upstream
+behaviour - unmodified Wolf4SDL does the same on this machine - and the option
+is the documented way out.  Pass `--joystick <n>` after the script's own
+arguments to use a real one; Wolf4SDL keeps the last occurrence.
+
 Still to come: the asset converter and its tests.  Generated resources belong
 in `../generated/` and are ignored because they derive from user-supplied
 original game files.
