@@ -45,6 +45,35 @@ else in the video path draws into `screen.buffer` and would not notice the
 collapse.  Whatever replaces it has to keep the dissolve without keeping a
 second full-screen buffer alive for the rest of the frame's life.
 
+## The audio path is SDL_mixer's, and the target has no mixer
+
+SDL_mixer does one job for this game and it is not synthesis.  The OPL music
+runs in a `Mix_HookMusic` callback and the PC speaker in a `Mix_SetPostMix`
+one, both of them Wolf's own code; what SDL_mixer contributes is the mixing of
+digitised voices - eight channels, two reserved, `Mix_GroupOldest` for
+stealing, `Mix_SetPanning` for the positional audio `UpdateSoundLoc()` refreshes
+every frame.  PicoSDL has one `SDL_OpenAudio` callback and nothing else, so
+that one job has to be written: a fixed voice array doing resample, pan and a
+saturating accumulate, then the OPL and the speaker added on top.
+
+`SD_PrepareSound()` has to go with it.  It converts every digitised sound to
+device-rate 16-bit PCM through `SafeMalloc`: 391,666 bytes of 7042 Hz 8-bit
+source becomes 4.68 MiB at 44.1 kHz, and 766 KB even at its own rate - against
+520 KB of SRAM with about 350 KB already spoken for.  The sounds should stay in
+flash as they are and be resampled in the mixer, which is what picopop does
+with a 32.32 fixed-point cursor.
+
+The rest fits.  The whole audio inventory is 711,871 bytes of flash: 9,986 of
+PC speaker sounds, 12,969 of AdLib sounds, 297,250 of IMF music and 391,666 of
+digitised sound.  DBOPL costs 938 instructions per output sample, so 16.5% of
+one 125 MHz core at 22050 Hz and 8.3% at 11025, on the core that does nothing
+else.
+
+Three things picopop learned here are worth not rediscovering: saturate when
+mixing rather than `+=` on a `short`, which `SDL_PCMixCallback()` does today;
+never allocate in the callback; and believe the *obtained* audio spec, since
+PicoSDL fixes the block at 256 frames whatever is asked for.
+
 ## Input assumes a desktop, and trusts whatever SDL enumerates
 
 `IN_Startup()` opens joystick 0 by default and `ReadAnyControl()` then applies
