@@ -45,34 +45,28 @@ else in the video path draws into `screen.buffer` and would not notice the
 collapse.  Whatever replaces it has to keep the dissolve without keeping a
 second full-screen buffer alive for the rest of the frame's life.
 
-## The audio path is SDL_mixer's, and the target has no mixer
+## Audio: what is left after SDL_mixer
 
-SDL_mixer does one job for this game and it is not synthesis.  The OPL music
-runs in a `Mix_HookMusic` callback and the PC speaker in a `Mix_SetPostMix`
-one, both of them Wolf's own code; what SDL_mixer contributes is the mixing of
-digitised voices - eight channels, two reserved, `Mix_GroupOldest` for
-stealing, `Mix_SetPanning` for the positional audio `UpdateSoundLoc()` refreshes
-every frame.  PicoSDL has one `SDL_OpenAudio` callback and nothing else, so
-that one job has to be written: a fixed voice array doing resample, pan and a
-saturating accumulate, then the OPL and the speaker added on top.
+SDL_mixer is gone - one `SDL_OpenAudio` callback runs the voices, the OPL and
+the speaker - and `SD_PrepareSound()` no longer expands anything.  What remains
+is measurement on the board rather than design.
 
-`SD_PrepareSound()` has to go with it.  It converts every digitised sound to
-device-rate 16-bit PCM through `SafeMalloc`: 391,666 bytes of 7042 Hz 8-bit
-source becomes 4.68 MiB at 44.1 kHz, and 766 KB even at its own rate - against
-520 KB of SRAM with about 350 KB already spoken for.  The sounds should stay in
-flash as they are and be resampled in the mixer, which is what picopop does
-with a 32.32 fixed-point cursor.
+The whole audio inventory is 711,871 bytes of flash: 9,986 of PC speaker
+sounds, 12,969 of AdLib sounds, 297,250 of IMF music and 391,666 of digitised
+sound.  DBOPL costs 938 instructions per output sample, so 16.5% of one 125 MHz
+core at 22050 Hz and 8.3% at 11025, on the core that does nothing else - but
+that is picopop's measurement of picopop's build, and this one has eight voices
+resampling alongside it.  The mixer needs a load report of its own before the
+sample rate and the voice count are settled.
 
-The rest fits.  The whole audio inventory is 711,871 bytes of flash: 9,986 of
-PC speaker sounds, 12,969 of AdLib sounds, 297,250 of IMF music and 391,666 of
-digitised sound.  DBOPL costs 938 instructions per output sample, so 16.5% of
-one 125 MHz core at 22050 Hz and 8.3% at 11025, on the core that does nothing
-else.
+The rate is still 44100 by default, which no target wants.  `--samplerate`
+already accepts anything from 7042 up; picking the number is waiting on the
+load report.
 
-Three things picopop learned here are worth not rediscovering: saturate when
-mixing rather than `+=` on a `short`, which `SDL_PCMixCallback()` does today;
-never allocate in the callback; and believe the *obtained* audio spec, since
-PicoSDL fixes the block at 256 frames whatever is asked for.
+`SD_SoundPlaying()` still answers only for the PC speaker and the AdLib
+channel, as it always did, so `SD_WaitSoundDone()` does not wait for a
+digitised sound.  That was true under SDL_mixer too and nothing depends on it
+yet, but it is a surprise worth removing rather than inheriting.
 
 ## Input assumes a desktop, and trusts whatever SDL enumerates
 

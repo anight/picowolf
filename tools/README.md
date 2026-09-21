@@ -42,6 +42,22 @@ Still to come: the asset converter and its tests.  Generated resources belong
 in `../generated/` and are ignored because they derive from user-supplied
 original game files.
 
+## host/resample_check
+
+Compares the port's fixed-point digi resampler against the float quadratic it
+replaced, at each sample rate worth considering, and checks the properties that
+have to hold whatever the interpolator: a null source is silent, past the end
+is silent, a constant 128 is exactly silence with no DC, and mixing saturates
+instead of wrapping.
+
+```bash
+make -C tools/host check
+```
+
+The two are different interpolators, so this characterises the gap rather than
+demanding a match - 37 dB SNR on a sine, and much less on noise, because at
+7042 Hz consecutive samples are unrelated and any disagreement is large.
+
 ## host/frame_dump.so
 
 An `LD_PRELOAD` shim that interposes on `SDL_UpdateWindowSurface()` and saves
