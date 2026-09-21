@@ -3,11 +3,12 @@
 # Run the desktop Wolf4SDL build.
 #
 # The port is fixed at 320x200, so a window is 1/16th the width of a modern
-# display and fullscreen is the only comfortable way to look at it.  That is
-# the default here; pass --windowed for the small, crisp version.
+# display, and fullscreen scales it up without the game knowing.  Windowed is
+# the default here because it stays out of the way; pass --fullscreen for the
+# large version.
 #
-#   tools/host/play.sh                 fullscreen
-#   tools/host/play.sh --windowed      a 320x200 window
+#   tools/host/play.sh                 a 320x200 window
+#   tools/host/play.sh --fullscreen    scaled up to the display
 #   tools/host/play.sh --tedlevel 0    start on E1M1 instead of the title
 #
 # Set DUMP to a directory to also save every presented frame as a BMP through
@@ -66,6 +67,16 @@ if [ -n "${DUMP-}" ]; then
 fi
 
 cd "$game"
-# --joystick comes first so a caller's own --joystick wins: Wolf4SDL's option
-# loop keeps the last occurrence.
-exec ./wolf4sdl --joystick -1 "$@"
+
+# Wolf4SDL has no --fullscreen; it has --windowed and defaults to fullscreen.
+# Since this script defaults the other way, spell the inverse here.
+for arg
+do
+    [ "$arg" = --fullscreen ] || set -- "$@" "$arg"
+    shift
+    [ "$arg" != --fullscreen ] || windowed=
+done
+
+# These come first so a caller's own --windowed or --joystick wins: Wolf4SDL's
+# option loop keeps the last occurrence.
+exec ./wolf4sdl ${windowed---windowed} --joystick -1 "$@"
