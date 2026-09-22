@@ -127,3 +127,47 @@ The BMP comes from the window surface itself, so a wrong palette, a missing
 blit and a frame that was never presented all show up in the output.  A frame
 sequence also makes a before/after comparison possible for later steps of the
 port: the pixels that reach the panel are the thing being preserved.
+
+## dosbox/
+
+The original DOS game, captured as a reference to compare the port against.
+It needs your own copy of Wolfenstein 3D in `dosbox/` - the executable and its
+data - which, like the `.wl6` files in the Wolf4SDL submodule, is never
+committed.
+
+```bash
+tools/dosbox/capture.sh 120
+tools/dosbox/compare_video.py --dos captures/dos/video.mkv --pw captures/pw/frames
+tools/dosbox/compare_audio.py --dos captures/dos/audio.raw --pw captures/pw/audio.raw
+```
+
+`capture.sh` runs DOSBox-X on its own Xvfb display rather than on the desktop.
+That is not tidiness: this session is GNOME on Wayland, where the emulator
+window lives under XWayland, synthetic key events never reach it - the
+compositor owns the keyboard, and the 1x1 window holding X focus is XWayland's
+focus proxy - and `x11grab` of the root returns black, because XWayland windows
+are not composited into it.  Both work inside Xvfb, where there is no
+compositor, and the run cannot type into whatever the user has open.
+
+It captures without touching DOSBox-X's capture hotkeys, which would need
+synthetic input to reach the mapper: video comes from `x11grab` on the Xvfb
+display, and audio from SDL's disk audio driver, which writes what the mixer
+produces to a file instead of to a sound card.  The picowolf host build is
+captured the same way, so the two are the same format - 44100 Hz stereo signed
+16-bit - with no resampler in between.
+
+`reference-x.conf` is the emulator side of that: `vgaonly`, `core=normal` and
+`cycles=fixed 20000` so two runs agree, `scaler=none` so the window is the
+game's pixels doubled exactly and a capture can be halved back to 320x200
+without guessing.
+
+`compare_video.py` reduces both sides to palette indices before comparing
+anything.  A VGA DAC takes 6 bits per channel and the two paths widen them to 8
+differently, so comparing RGB would report every pixel of an identical picture
+as a difference; which palette entry each pixel got is what the port is
+responsible for.
+
+`compare_audio.py` aligns the two captures first - each run started its attract
+sequence when it felt like it - by correlating 10 ms energy envelopes rather
+than samples, since that only requires the same notes at the same times, not
+two OPL renderings agreeing phase for phase.

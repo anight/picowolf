@@ -2,7 +2,27 @@
 /generated/*
 !/generated/.gitkeep
 
-/tools/host/*.so
+#
+# A DOS Wolfenstein 3D installation, used as the reference to compare the port
+# against.  It is the user's own copy of the original game - executable, data
+# and savegames - and like the data files in the Wolf4SDL submodule it is never
+# committed.  Captures taken from it land in /captures/.
+#
+/dosbox/
+/captures/
 
+#
+# Host-side build products.  The PicoSDL harness and the digi renderer are
+# built from sources that are committed; their objects and binaries are not.
+#
+/tools/host/*.so
+/tools/host/.objs-psdl/
+/tools/host/psdl_wolf
+/tools/host/digi_render
 /tools/host/resample_check
+#
+# The game writes this next to wherever it was run from.
+#
+/config.wl6
+
 __pycache__/
