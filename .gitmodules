@@ -1,0 +1,8 @@
+[submodule "picosdl"]
+	path = picosdl
+	url = git@github.com:anight/picosdl.git
+	branch = master
+[submodule "Wolf4SDL"]
+	path = Wolf4SDL
+	url = git@github.com:anight/Wolf4SDL.git
+	branch = picowolf

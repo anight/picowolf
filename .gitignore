@@ -4,26 +4,5 @@
 
 /tools/host/*.so
 
-#
-# Dependencies that carry their own history.  Both should become submodules,
-# following picopop: picosdl from git@github.com:anight/picosdl.git, and
-# Wolf4SDL from a fork on a picowolf branch once one is pushed.  Until then
-# picosdl is a symlink into the picopop checkout and Wolf4SDL is a local clone
-# tracking bitbucket.org/ks-presto/wolf4sdl with the port commits on top, so
-# neither belongs in this repository's index.
-#
-/picosdl
-/Wolf4SDL/
-
-# Original Wolfenstein 3D data is user-supplied and must never be committed.
-# Kept even though Wolf4SDL/ is ignored above, so the rule survives the move
-# to a submodule.
-/Wolf4SDL/*.wl1
-/Wolf4SDL/*.wl3
-/Wolf4SDL/*.wl6
-/Wolf4SDL/*.sd1
-/Wolf4SDL/*.sd2
-/Wolf4SDL/*.sd3
-/Wolf4SDL/*.sod
 /tools/host/resample_check
 __pycache__/

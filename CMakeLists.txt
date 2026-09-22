@@ -1,14 +1,27 @@
 #
-# picowolf - Wolf4SDL on a Raspberry Pi Pico 2 W.
+# picowolf - Wolfenstein 3D on a Raspberry Pi Pico 2 W.
 #
-# Configure from the repository root with:
+# This is the top-level build. Configure it directly:
 #
-#   cmake -S src -B build
-#   cmake --build build
+#     cmake -S . -B build
+#     cmake --build build
 #
-# This initial target deliberately contains no game code.  It verifies the
-# hardware and PicoSDL integration independently before the Wolf port adds
-# assets, rendering, input mapping, and audio synthesis.
+# and it produces build/picowolf.uf2, which picosdl/picodev.sh will program.
+#
+# The layout it assumes:
+#
+#   src/        main.c for the bring-up, wolf_main.c for the game
+#   picosdl/    the SDL2 subset, a submodule and an independent library
+#   Wolf4SDL/   the game, a submodule on its picowolf branch
+#   tools/      the asset pipeline and the desktop-side helpers
+#
+# picosdl knows nothing about this project: it is added as a subdirectory and
+# linked, the same way any other game would use it. Everything below that is
+# specific to Wolfenstein lives here rather than in the library.
+#
+# The revision of each dependency is the submodule gitlink, so a picosdl that
+# has moved under this build shows up as a modified submodule in git status
+# rather than as a link error.
 #
 cmake_minimum_required(VERSION 3.13)
 
@@ -22,24 +35,20 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
         Debug Release MinSizeRel RelWithDebInfo)
 endif()
 
-set(PICOWOLF_ROOT ${CMAKE_CURRENT_LIST_DIR}/..)
-set(PICOSDL_DIR ${PICOWOLF_ROOT}/picosdl)
+set(PICOWOLF_ROOT ${CMAKE_CURRENT_LIST_DIR})
+set(PICOSDL_DIR   ${PICOWOLF_ROOT}/picosdl)
+set(WOLF_DIR      ${PICOWOLF_ROOT}/Wolf4SDL)
 
-if(NOT EXISTS ${PICOSDL_DIR}/src)
-    message(FATAL_ERROR
-        "${PICOSDL_DIR} is missing - initialise the picosdl submodule/dependency")
-endif()
+foreach(dir ${PICOSDL_DIR}/src ${WOLF_DIR})
+    if(NOT EXISTS ${dir})
+        message(FATAL_ERROR
+            "${dir} is missing - run: git submodule update --init --recursive")
+    endif()
+endforeach()
 
 # Pico 2 W has the RP2350 and 4 MiB of flash.  PICO_BOARD can be overridden
 # when configuring a different supported board.
 set(PICO_BOARD pico2_w CACHE STRING "Board type")
-
-#
-# The PicoSDL revision this was last built and flashed against.  picosdl_version.cmake
-# checks it on every build and explains itself if it has moved; bump this once
-# the build is happy with a newer one.
-#
-set(PICOSDL_EXPECTED_COMMIT "cc5894d5d2d92c44f3c8afb6dafa40427d3aa3f0")
 
 # PicoSDL owns the Pico SDK bootstrap so every game using it finds the same SDK.
 include(${PICOSDL_DIR}/cmake/pico_sdk_bootstrap.cmake)
@@ -52,13 +61,22 @@ pico_sdk_init()
 set(PICOSDL_BUILD_DEMO ON CACHE BOOL "Build picosdl-demo for board bring-up")
 add_subdirectory(${PICOSDL_DIR} picosdl)
 
+# ------------------------------------------------------------- the bring-up
+#
+# No game code at all: it verifies the hardware and the PicoSDL integration
+# independently of assets, rendering, input mapping and audio synthesis.
+#
 add_executable(picowolf-bringup
-    main.c
+    src/main.c
 )
 
 target_link_libraries(picowolf-bringup PRIVATE picosdl)
 target_compile_definitions(picowolf-bringup PRIVATE PICO_HEAP_SIZE=4096)
-set_source_files_properties(main.c PROPERTIES COMPILE_OPTIONS "-Wall;-Wextra")
+set_source_files_properties(src/main.c PROPERTIES COMPILE_OPTIONS "-Wall;-Wextra")
+
+pico_enable_stdio_uart(picowolf-bringup 1)
+pico_enable_stdio_usb(picowolf-bringup 1)
+pico_add_extra_outputs(picowolf-bringup)
 
 # ---------------------------------------------------------------- the game
 #
@@ -68,7 +86,6 @@ set_source_files_properties(main.c PROPERTIES COMPILE_OPTIONS "-Wall;-Wextra")
 # DOSBox's DBOPL - the MAME one allocates in three places and there is no
 # allocator here.
 #
-set(WOLF_DIR ${PICOWOLF_ROOT}/Wolf4SDL)
 set(PICOWOLF_GENERATED ${PICOWOLF_ROOT}/generated CACHE PATH
     "Where tools/assets/convert.py put the converted resources")
 
@@ -83,7 +100,7 @@ list(TRANSFORM WOLF_SOURCES PREPEND ${WOLF_DIR}/)
 
 if(EXISTS ${PICOWOLF_GENERATED}/wolf_assets.c)
     add_executable(picowolf
-        wolf_main.c
+        src/wolf_main.c
         ${WOLF_SOURCES}
         ${PICOWOLF_GENERATED}/wolf_assets.c
         ${PICOWOLF_GENERATED}/wolf_blobs.S)
@@ -119,16 +136,3 @@ else()
         "picowolf: no converted resources in ${PICOWOLF_GENERATED}, "
         "building the bring-up only.  Run tools/assets/convert.py.")
 endif()
-
-add_custom_target(picosdl-version ALL
-    COMMAND ${CMAKE_COMMAND}
-        -DPICOSDL_DIR=${PICOSDL_DIR}
-        -DEXPECTED=${PICOSDL_EXPECTED_COMMIT}
-        -P ${CMAKE_CURRENT_LIST_DIR}/picosdl_version.cmake
-    COMMENT "Checking the PicoSDL revision"
-    VERBATIM)
-
-pico_enable_stdio_uart(picowolf-bringup 1)
-pico_enable_stdio_usb(picowolf-bringup 1)
-pico_add_extra_outputs(picowolf-bringup)
-

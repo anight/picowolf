@@ -11,28 +11,15 @@ RAM 58.3% of 512 KiB.  What follows is what is still wrong with that.
 
 ## Nobody but this machine can build it
 
-`anight/picowolf` now has all of its history on `master`, and cloning it gets
-you a tree that does not build.  Two of its three parts are missing:
+*Done.*  `picosdl` and `Wolf4SDL` are submodules, the build is configured from
+the repository root, and a clone with `--recurse-submodules` has everything it
+needs except the data files, which are the user's own and are converted rather
+than committed.
 
-- `picosdl` is a symlink into the picopop checkout.  Convenient while both are
-  being worked on - an edit is immediately live in both projects - and it means
-  picowolf records no revision of its own.  `src/picosdl_version.cmake` warns on
-  every build when PicoSDL is not the commit named in `src/CMakeLists.txt` and
-  lists what moved in between, which stops another five days of silent
-  breakage, but it is a smoke alarm, not the submodule PLAN asks for.
-- `Wolf4SDL` is a local clone of bitbucket with fourteen port commits on top and
-  nowhere to push them.  Its `origin` points at `anight/picowolf`, which is
-  wrong - two unrelated root histories cannot both be `master` there.  Once a
-  fork exists:
-
-  ```
-  git -C Wolf4SDL remote set-url origin git@github.com:anight/Wolf4SDL.git
-  git -C Wolf4SDL push -u origin master:picowolf
-  ```
-
-Both are decisions about how the projects are developed rather than cleanups,
-which is why neither has been made yet.  Until they are, the board build is
-reproducible only here.
+What went with it: `PICOSDL_EXPECTED_COMMIT` and `src/picosdl_version.cmake`,
+which existed to notice PicoSDL moving underneath a symlink.  The gitlink
+records the revision now, and a PicoSDL that has moved shows up as a modified
+submodule in `git status` before it shows up as a link error.
 
 ## 22,808 bytes of SRAM are tables that could be in flash
 
