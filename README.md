@@ -22,7 +22,7 @@ generated/  the converted resources, derived from your own data files
 ## Building
 
 ```bash
-git clone --recurse-submodules git@github.com:anight/picowolf.git
+git clone --recurse-submodules https://github.com/anight/picowolf.git
 ```
 
 The game's data files are not here and never will be: put your own
