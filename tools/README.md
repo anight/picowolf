@@ -171,3 +171,49 @@ responsible for.
 sequence when it felt like it - by correlating 10 ms energy envelopes rather
 than samples, since that only requires the same notes at the same times, not
 two OPL renderings agreeing phase for phase.
+
+## host/psdl_wolf
+
+The game built against the real PicoSDL, on the desktop.
+
+```bash
+make -C tools/host psdl_wolf
+WOLF_AUDIOFILE=/tmp/audio.raw WOLF_AUDIOSECS=30 WOLF_EXIT_AFTER=2000 \
+tools/host/psdl_wolf --nowait --tedlevel 0 --samplerate 22050
+```
+
+The SDL2 host build answers "is the game right".  This answers "is the game
+right against PicoSDL", which is a different question and the one a wrong pixel
+or a wrong sound on the board is an answer to: everything above the backend -
+the blitters, the surface pool, the arena, the palette-as-CLUT, the mixer - is
+the code the firmware runs.
+
+`WOLF_AUDIOFILE` writes every rendered block as raw 44100-or-whatever stereo
+s16.  `WOLF_AUDIOSECS` bounds it, and needs to: the backend's clock is virtual
+and advances as fast as the CPU allows, so the mixer is pumped at some multiple
+of real time - two minutes of wall clock wrote 16 GB before that existed.
+
+`--nowait` is needed because the backend has no keyboard and the opening
+screens wait for one.  It also skips the attract loop, so pair it with
+`--tedlevel` to reach a level where sounds actually play; without that the game
+sits in a menu and the capture is silence.
+
+## host/digi_render
+
+One digitised sound, rendered through the port's own mixer arithmetic.
+
+```bash
+make -C tools/host digi_render
+tools/assets/render_digi.py            # all 46, named, into captures/digi/all
+```
+
+It includes `sd_mixer.h` and calls `SD_ResampleStep()`, `SD_ResampleSample()`
+and `SD_MixSample()`, so the WAV holds the samples the board would produce -
+verified bit-identical against the same sound played through `psdl_wolf`.  That
+makes it the quick way to answer "is this sound wrong, or is the game playing
+the wrong sound", which are different faults with different fixes.
+
+`render_digi.py` names them from `wolfdigimap[]` with the preprocessor
+honoured.  That matters: the array holds a Wolfenstein table and a Spear of
+Destiny table in one declaration, and the same index means different sounds in
+each, so a regex over the whole body silently takes whichever came last.
